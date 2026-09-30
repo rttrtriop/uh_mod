@@ -1,0 +1,132 @@
+{
+  "version": "0.0.3",
+  "status": "ready",
+  "script": {
+    "version": "0.0.3",
+    "name": "uh_assistant_core.js",
+    "description": "Автономный движок решения тестов и интеграции сервисов Учусь в Кузбассе",
+    "source": "// ==UserScript==\n// @name         UH Mod Assistant Core Engine\n// @version      0.0.3\n// @description  Автономный движок решения тестов и интеграции сервисов приложения «Учусь в Кузбассе»\n// @author       ONIM (@onimosik)\n// ==/UserScript==\n\n(function () {\n    'use strict';\n\n    if (window.UH_MOD_INITIALIZED) {\n        console.log('[UH_MOD] Core already active, skipping re-init.');\n        return;\n    }\n    window.UH_MOD_INITIALIZED = true;\n    window.UH_MOD_ACTIVE = true;\n    window.UH_MOD_VERSION = '0.0.3';\n\n    console.log('[UH_MOD] Core Engine v0.0.3 starting up...');\n\n    const CONFIG = {\n        backendUrl: 'https://uh-mod.onrender.com',\n        hintsEnabled: true,\n        highlightColor: '#00E676',\n        highlightBg: 'rgba(0, 230, 118, 0.18)',\n        badgeColor: '#7C4DFF',\n        autoSolveDelay: 400\n    };\n\n    const MOD = {\n        config: CONFIG,\n\n        // 1. Поиск и извлечение вопросов на странице теста\n        extractQuestions: function () {\n            const questions = [];\n            const qElements = document.querySelectorAll('.question-block, .test-question, .task-card, .test_item, [data-question-id]');\n            \n            if (qElements.length > 0) {\n                qElements.forEach((el, index) => {\n                    const qId = el.getAttribute('data-question-id') || el.id || ('q_' + (index + 1));\n                    const qTextEl = el.querySelector('.question-text, .task-text, .title, h3, h4, p') || el;\n                    const qText = (qTextEl.innerText || qTextEl.textContent || '').trim();\n                    \n                    const options = [];\n                    const optElements = el.querySelectorAll('.option, .answer-variant, label, .radio-label, .checkbox-label');\n                    optElements.forEach(opt => {\n                        const optText = (opt.innerText || opt.textContent || '').trim();\n                        if (optText) options.push(optText);\n                    });\n\n                    questions.push({\n                        id: qId,\n                        type: options.length > 0 ? 'choice' : 'input',\n                        question: qText,\n                        options: options,\n                        element: el\n                    });\n                });\n            } else {\n                // Одиночный вопрос на странице\n                const mainQuestion = document.querySelector('h1, h2, .question, .task') || document.body;\n                const options = [];\n                document.querySelectorAll('input[type=\"radio\"], input[type=\"checkbox\"], label').forEach(opt => {\n                    const text = (opt.innerText || opt.textContent || opt.value || '').trim();\n                    if (text) options.push(text);\n                });\n                if (options.length > 0) {\n                    questions.push({\n                        id: 'single_q',\n                        type: 'choice',\n                        question: (mainQuestion.innerText || '').trim(),\n                        options: options,\n                        element: document.body\n                    });\n                }\n            }\n            return questions;\n        },\n\n        // 2. Локальный парсер (мгновенное решение математических и логических вопросов)\n        localSolve: function (qText, options) {\n            if (!qText) return null;\n            const text = qText.toLowerCase();\n\n            // Линейные уравнения вида ax + b = c\n            const eqMatch = text.match(/([+-]?\\s*\\d*)\\s*x\\s*([+-]\\s*\\d+)?\\s*=\\s*([+-]?\\s*\\d+)/i);\n            if (eqMatch) {\n                let aStr = (eqMatch[1] || '').replace(/\\s+/g, '');\n                let bStr = (eqMatch[2] || '').replace(/\\s+/g, '');\n                let cStr = (eqMatch[3] || '').replace(/\\s+/g, '');\n\n                let a = (aStr === '' || aStr === '+') ? 1 : (aStr === '-' ? -1 : parseFloat(aStr));\n                let b = bStr ? parseFloat(bStr) : 0;\n                let c = parseFloat(cStr);\n\n                if (!isNaN(a) && a !== 0 && !isNaN(b) && !isNaN(c)) {\n                    const ans = (c - b) / a;\n                    return { answer: String(ans), type: 'math' };\n                }\n            }\n\n            // Квадратный корень: sqrt(144) или корень из 144\n            const sqrtMatch = text.match(/(?:sqrt|корень\\s*(?:из)?)\\s*\\(?(\\d+)\\)?/i);\n            if (sqrtMatch) {\n                const num = parseFloat(sqrtMatch[1]);\n                if (!isNaN(num)) {\n                    return { answer: String(Math.sqrt(num)), type: 'math' };\n                }\n            }\n\n            // Арифметика: a + b, a - b, a * b, a / b\n            const arithMatch = text.match(/(\\d+(?:\\.\\d+)?)\\s*([\\+\\-\\*\\/])\\s*(\\d+(?:\\.\\d+)?)/);\n            if (arithMatch) {\n                const n1 = parseFloat(arithMatch[1]);\n                const op = arithMatch[2];\n                const n2 = parseFloat(arithMatch[3]);\n                let res = 0;\n                if (op === '+') res = n1 + n2;\n                else if (op === '-') res = n1 - n2;\n                else if (op === '*') res = n1 * n2;\n                else if (op === '/' && n2 !== 0) res = n1 / n2;\n                return { answer: String(res), type: 'math' };\n            }\n\n            return null;\n        },\n\n        // 3. Подсветка ответов в интерфейсе\n        applyAnswers: function (answersMap) {\n            if (!answersMap || typeof answersMap !== 'object') return;\n            console.log('[UH_MOD] Highlighting correct answers:', answersMap);\n\n            const allClickables = document.querySelectorAll('label, .option, .answer, .variant, input[type=\"radio\"], input[type=\"checkbox\"], [role=\"radio\"]');\n\n            allClickables.forEach(node => {\n                const nodeText = (node.innerText || node.textContent || node.value || '').trim().toLowerCase();\n                if (!nodeText) return;\n\n                for (const [qid, ansData] of Object.entries(answersMap)) {\n                    const targetText = String(ansData.answer || ansData.answer_text || '').trim().toLowerCase();\n                    if (!targetText) continue;\n\n                    if (nodeText.includes(targetText) || targetText.includes(nodeText)) {\n                        node.style.transition = 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';\n                        node.style.border = '2px solid ' + CONFIG.highlightColor;\n                        node.style.borderRadius = '12px';\n                        node.style.backgroundColor = CONFIG.highlightBg;\n                        node.style.boxShadow = '0 0 12px rgba(0, 230, 118, 0.35)';\n\n                        // Добавляем бейдж «✓ ONIM AI»\n                        if (!node.querySelector('.uh-mod-badge')) {\n                            const badge = document.createElement('span');\n                            badge.className = 'uh-mod-badge';\n                            badge.innerText = ' ✓ AI ';\n                            badge.style.display = 'inline-block';\n                            badge.style.marginLeft = '8px';\n                            badge.style.padding = '2px 8px';\n                            badge.style.borderRadius = '8px';\n                            badge.style.background = 'linear-gradient(135deg, #7C4DFF, #00E676)';\n                            badge.style.color = '#FFFFFF';\n                            badge.style.fontSize = '11px';\n                            badge.style.fontWeight = 'bold';\n                            node.appendChild(badge);\n                        }\n                    }\n                }\n            });\n        },\n\n        // 4. Запрос к AI бэкенду Gemini\n        requestAiSolve: async function (questions) {\n            if (!questions || questions.length === 0) return;\n            const payloadQuestions = questions.map(q => ({\n                id: q.id,\n                type: q.type,\n                question: q.question,\n                options: q.options\n            }));\n\n            try {\n                const response = await fetch(CONFIG.backendUrl + '/solve_batch', {\n                    method: 'POST',\n                    headers: { 'Content-Type': 'application/json' },\n                    body: JSON.stringify({\n                        test_id: 'auto_' + Date.now(),\n                        questions: payloadQuestions\n                    })\n                });\n\n                if (response.ok) {\n                    const data = await response.json();\n                    if (data && data.answers) {\n                        const answersMap = {};\n                        data.answers.forEach(a => {\n                            answersMap[String(a.question_id)] = a;\n                        });\n                        MOD.applyAnswers(answersMap);\n                    }\n                } else {\n                    console.warn('[UH_MOD] AI backend response error:', response.status);\n                }\n            } catch (err) {\n                console.error('[UH_MOD] AI backend fetch failed:', err);\n            }\n        },\n\n        // 5. Главный цикл инициализации\n        run: function () {\n            if (!CONFIG.hintsEnabled) {\n                console.log('[UH_MOD] Hints disabled by user settings.');\n                return;\n            }\n\n            const questions = MOD.extractQuestions();\n            console.log('[UH_MOD] Discovered questions:', questions.length);\n\n            if (questions.length === 0) return;\n\n            // Локальный мгновенный прогон\n            const localAnswers = {};\n            const needAi = [];\n\n            questions.forEach(q => {\n                const solved = MOD.localSolve(q.question, q.options);\n                if (solved) {\n                    localAnswers[q.id] = { answer: solved.answer };\n                } else {\n                    needAi.push(q);\n                }\n            });\n\n            if (Object.keys(localAnswers).length > 0) {\n                MOD.applyAnswers(localAnswers);\n            }\n\n            if (needAi.length > 0) {\n                MOD.requestAiSolve(needAi);\n            }\n        }\n    };\n\n    window.UH_MOD = MOD;\n\n    // Автоматический запуск при загрузке документа\n    if (document.readyState === 'loading') {\n        document.addEventListener('DOMContentLoaded', () => setTimeout(MOD.run, CONFIG.autoSolveDelay));\n    } else {\n        setTimeout(MOD.run, CONFIG.autoSolveDelay);\n    }\n})();\n"
+  },
+  "config": {
+    "mod_name": "UH Mod Assistant",
+    "version": "0.0.3",
+    "tile_title": "Настройки мода",
+    "tile_subtitle": "Параметры и сервисы",
+    "schedule_url": "https://raspisanie.nikasoft.ru/93513083.html",
+    "hints_title": "Подсказки в тестах",
+    "hints_subtitle": "Подсветка правильных ответов",
+    "schedule_title": "Расписание занятий",
+    "schedule_subtitle": "Расписание уроков и звонков",
+    "grade_editor_title": "Редактор оценок",
+    "grade_editor_subtitle": "Визуальное добавление и удаление",
+    "hints_enabled_default": true,
+    "grade_editor_default": true,
+    "backend_url": "https://uh-mod.onrender.com",
+    "github_repo": "https://github.com/onim/uh-mod",
+    "theme": {
+      "background": "#000000",
+      "card_background": "#1E1E1E",
+      "accent_color": "#7C4DFF",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#9E9E9E"
+    },
+    "grade_types": [
+      {
+        "value": 5,
+        "label": "5",
+        "type": "mark",
+        "weight": 1.0,
+        "color": "#00E676"
+      },
+      {
+        "value": 4,
+        "label": "4",
+        "type": "mark",
+        "weight": 1.0,
+        "color": "#1E88E5"
+      },
+      {
+        "value": 3,
+        "label": "3",
+        "type": "mark",
+        "weight": 1.0,
+        "color": "#FB8C00"
+      },
+      {
+        "value": 2,
+        "label": "2",
+        "type": "mark",
+        "weight": 1.0,
+        "color": "#E53935"
+      },
+      {
+        "value": 1,
+        "label": "1",
+        "type": "mark",
+        "weight": 1.0,
+        "color": "#8E0000"
+      },
+      {
+        "value": -1,
+        "label": "ОП",
+        "status": 30,
+        "type": "attendance",
+        "name": "Опоздание",
+        "color": "#FFA726"
+      },
+      {
+        "value": -2,
+        "label": "Н",
+        "status": 90,
+        "type": "attendance",
+        "name": "Не был",
+        "color": "#EF5350"
+      },
+      {
+        "value": -3,
+        "label": "У",
+        "status": 10,
+        "type": "attendance",
+        "name": "Уважительная",
+        "color": "#42A5F5"
+      },
+      {
+        "value": -4,
+        "label": "Б",
+        "status": 20,
+        "type": "attendance",
+        "name": "Болел",
+        "color": "#AB47BC"
+      }
+    ]
+  },
+  "assets": {
+    "ic_tile_mod": "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",
+    "ic_tile_mod.png": "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",
+    "ic_chevron_right": "PHZlY3RvciB4bWxuczphbmRyb2lkPSJodHRwOi8vc2NoZW1hcy5hbmRyb2lkLmNvbS9hcGsvcmVzL2FuZHJvaWQiCiAgICBhbmRyb2lkOndpZHRoPSIyNC4wZHAiCiAgICBhbmRyb2lkOmhlaWdodD0iMjQuMGRwIgogICAgYW5kcm9pZDp2aWV3cG9ydFdpZHRoPSIyNC4wIgogICAgYW5kcm9pZDp2aWV3cG9ydEhlaWdodD0iMjQuMCI+CiAgICA8cGF0aAogICAgICAgIGFuZHJvaWQ6ZmlsbENvbG9yPSIjODA5ZTllOWUiCiAgICAgICAgYW5kcm9pZDpwYXRoRGF0YT0iTTguNTksMTYuNTlMMTMuMTcsMTIuMEw4LjU5LDcuNDFMMTAuMCw2LjBsNi4wLDYuMGwtNi4wLDYuMEw4LjU5LDE2LjU5eiIgLz4KPC92ZWN0b3I+Cg==",
+    "ic_chevron_right.xml": "PHZlY3RvciB4bWxuczphbmRyb2lkPSJodHRwOi8vc2NoZW1hcy5hbmRyb2lkLmNvbS9hcGsvcmVzL2FuZHJvaWQiCiAgICBhbmRyb2lkOndpZHRoPSIyNC4wZHAiCiAgICBhbmRyb2lkOmhlaWdodD0iMjQuMGRwIgogICAgYW5kcm9pZDp2aWV3cG9ydFdpZHRoPSIyNC4wIgogICAgYW5kcm9pZDp2aWV3cG9ydEhlaWdodD0iMjQuMCI+CiAgICA8cGF0aAogICAgICAgIGFuZHJvaWQ6ZmlsbENvbG9yPSIjODA5ZTllOWUiCiAgICAgICAgYW5kcm9pZDpwYXRoRGF0YT0iTTguNTksMTYuNTlMMTMuMTcsMTIuMEw4LjU5LDcuNDFMMTAuMCw2LjBsNi4wLDYuMGwtNi4wLDYuMEw4LjU5LDE2LjU5eiIgLz4KPC92ZWN0b3I+Cg=="
+  },
+  "rules": {
+    "test_patterns": [
+      {
+        "name": "linear_equation",
+        "pattern": "([+-]?\\s*\\d*)\\s*x\\s*([+-]\\s*\\d+)?\\s*=\\s*([+-]?\\s*\\d+)"
+      },
+      {
+        "name": "square_root",
+        "pattern": "(?:sqrt|корень\\s*(?:из)?)\\s*\\(?(\\d+)\\)?"
+      },
+      {
+        "name": "arithmetic",
+        "pattern": "(\\d+)\\s*([\\+\\-\\*\\/])\\s*(\\d+)"
+      }
+    ],
+    "synonyms": {
+      "верно": "да",
+      "неверно": "нет",
+      "истина": "1",
+      "ложь": "0"
+    }
+  },
+  "hash": "0f7eb7dc58b321b7da587157f6c16ff1def8c08f83b31d40f75267faea7a5fd4"
+}
