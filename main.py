@@ -21,6 +21,11 @@ import hashlib
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("uh_mod_backend")
 
+# ==============================================================================
+# ЕДИНЫЙ ИСТОЧНИК ВЕРСИИ МОДА (МЕНЯТЬ ТОЛЬКО ЗДЕСЬ):
+GLOBAL_VERSION = "0.0.3"
+# ==============================================================================
+
 # Load environment from root .env or current dir
 root_env = Path(__file__).resolve().parent.parent / ".env"
 local_env = Path(__file__).resolve().parent / ".env"
@@ -496,18 +501,21 @@ def get_or_build_bootstrap_payload() -> Tuple[Dict[str, Any], str]:
             assets_map[asset_name] = encoded
 
     active_key = gemini_keys[0] if gemini_keys else ""
+    js_file = local_assets_dir / "uh_assistant_core.js"
+    js_source = js_file.read_text(encoding="utf-8") if js_file.exists() else f"// UH Mod Core v{GLOBAL_VERSION}\nwindow.UH_MOD_ACTIVE = true;\nwindow.UH_MOD_VERSION = '{GLOBAL_VERSION}';"
+
     payload_data = {
-        "version": "0.0.3",
+        "version": GLOBAL_VERSION,
         "status": "ready",
         "script": {
-            "version": "0.0.3",
+            "version": GLOBAL_VERSION,
             "name": "uh_assistant_core.js",
-            "description": "Автономный скрипт решения тестов и интеграции сервисов",
-            "source": "// UH Mod Assistant Core Engine v0.0.3\n(function() {\n    console.log('[UH_MOD] Core Assistant Script v0.0.3 loaded');\n    window.UH_MOD_ACTIVE = true;\n    window.UH_MOD_VERSION = '0.0.3';\n})();"
+            "description": "Автономный движок решения тестов и интеграции сервисов",
+            "source": js_source
         },
         "config": {
             "mod_name": "UH Mod Assistant",
-            "version": "0.0.3",
+            "version": GLOBAL_VERSION,
             "tile_title": "Настройки мода",
             "tile_subtitle": "Параметры и сервисы",
             "schedule_url": "https://raspisanie.nikasoft.ru/93513083.html",
