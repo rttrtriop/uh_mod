@@ -497,11 +497,17 @@ def get_or_build_bootstrap_payload() -> Tuple[Dict[str, Any], str]:
 
     active_key = gemini_keys[0] if gemini_keys else ""
     payload_data = {
-        "version": "1.0.1",
+        "version": "0.0.3",
         "status": "ready",
+        "script": {
+            "version": "0.0.3",
+            "name": "uh_assistant_core.js",
+            "description": "Автономный скрипт решения тестов и интеграции сервисов",
+            "source": "// UH Mod Assistant Core Engine v0.0.3\n(function() {\n    console.log('[UH_MOD] Core Assistant Script v0.0.3 loaded');\n    window.UH_MOD_ACTIVE = true;\n    window.UH_MOD_VERSION = '0.0.3';\n})();"
+        },
         "config": {
             "mod_name": "UH Mod Assistant",
-            "version": "1.0.1",
+            "version": "0.0.3",
             "tile_title": "Настройки мода",
             "tile_subtitle": "Параметры и сервисы",
             "schedule_url": "https://raspisanie.nikasoft.ru/93513083.html",
